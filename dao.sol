@@ -3,41 +3,32 @@ pragma solidity >= 0.7.0 < 0.9.0;
 
 contract DAO {
     struct Proposal {
-        uint id;
         string description;
         uint amount;
+        uint totalShares;
         address payable recipient;
         uint votes;
-        uint end;
         bool isExecuted;
     }
 
-    mapping(address => bool) private isInvestor;
-    mapping(address => uint) public numOfShares;
-    mapping(address => mapping(uint => bool)) public isVoted;
-    mapping(address => mapping(address => bool)) public withdrawlStatus;
-    address[] public investorsList;
-    mapping(uint => Proposal) public proposals;
+    mapping(address => mapping(address => bool)) private isInvestor;
+    mapping(address => bool) public isProposer;
+    mapping(address => mapping(address => uint)) private numOfSharesOfAnInvestorInAProposal;
+    mapping(address => mapping(address => bool)) private whoVotedForWhichProposal;
+    mapping(address => Proposal) public proposals;
 
-    uint public totalShares;
-    uint public availableFunds;
-    uint public contributionTimeEnd;
-    uint public nextProposalId;
-    uint public voteTime;
+    uint public votingStartTime;
+    uint public votingDuration;
+    uint public votingEndTime = votingStartTime + votingDuration;
     uint public quorum;
     address public manager;
 
-    constructor(uint _contributionTimeEnd, uint _voteTime, uint _quorum) {
-        require(_quorum > 0 && _quorum < 100, "Not a valid value!");
-        contributionTimeEnd = block.timestamp + _contributionTimeEnd;
-        voteTime = _voteTime;
+    constructor(uint _votingStartTime, uint _votingDuration, uint _quorum) {
+        require(_quorum > 50 && _quorum < 100, "Not a valid quorum value!");
+        votingStartTime = _votingStartTime;
+        votingDuration = _votingDuration;
         quorum = _quorum;
         manager = msg.sender;
-    }
-
-    modifier onlyInvestor() {
-        require(isInvestor[msg.sender] == true, "You are not an investor!");
-        _;
     }
 
     modifier onlyManager() {
@@ -45,51 +36,56 @@ contract DAO {
         _;
     }
 
-    function contribution() public payable {
-        require(contributionTimeEnd >= block.timestamp, "Contribution Time Ended");
-        require(msg.value > 0, "Send more than 0 ether");
-        isInvestor[msg.sender] = true;
-        numOfShares[msg.sender] = numOfShares[msg.sender] + msg.value;
-        totalShares += msg.value;
-        availableFunds += msg.value;
-        investorsList.push(msg.sender);
-    }
-
-    function redeemShare(uint amount) public onlyInvestor() {
-        require(numOfShares[msg.sender] >= amount, "You don't have enough shares");
-        require(availableFunds >= amount, "Not enough funds");
-        numOfShares[msg.sender] -= amount;
-        if(numOfShares[msg.sender] == 0) {
-            isInvestor[msg.sender] = false;
+    function redeemShares(uint numOfShares, address proposalId) external {
+        require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal!");
+        numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] -= numOfShares;
+        payable(msg.sender).transfer((proposals[proposalId].amount/proposals[proposalId].totalShares)*numOfShares);
+        if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
+            isInvestor[msg.sender][proposalId] == false;
         }
-        availableFunds -= amount;
-        payable(msg.sender).transfer(amount);
     }
 
-    function transferShare(uint amount, address to) public onlyInvestor() {
-        require(availableFunds >= amount, "Not enough funds");
-        require(numOfShares[msg.sender] >= amount, "You don't have enough shares");
-        numOfShares[msg.sender] -= amount;
-        if(numOfShares[msg.sender] == 0) {
-            isInvestor[msg.sender] = false;
+    function transferShare(uint numOfShares, address to, address proposalId) external {
+        require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal");
+        numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] -= numOfShares;
+        numOfSharesOfAnInvestorInAProposal[to][proposalId] += numOfShares;
+        isInvestor[to][proposalId] = true;
+        if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
+            isInvestor[msg.sender][proposalId] = false;
         }
-        numOfShares[to] += amount;
-        isInvestor[to] = true;
-        investorsList.push(to);
     }
 
-    function createProposal(string calldata description, uint amount, address payable recipient) public onlyManager() {
-        require(availableFunds >= amount, "Not enough funds");
-        proposals[nextProposalId] = Proposal(nextProposalId, description, amount, recipient, 0, block.timestamp + voteTime, false);
-        nextProposalId++;
+    function createProposal(string calldata description, uint amount, uint totalShares, address payable recipient) public onlyManager() {
+        proposals[recipient] = Proposal(description, amount, totalShares, recipient, 0, false);
     }
 
-    function voteProposal(uint proposalId) public onlyInvestor() {
+    function voteProposal(address proposalId) external {
+        require(block.timestamp > votingStartTime, "Voting not started yet!");
+        require(block.timestamp < votingEndTime, "Voting Ended!");
         Proposal storage proposal = proposals[proposalId];
-        require(isVoted[msg.sender][proposalId] == false, "You have already voted for this proposal");
-        require(proposal.end >= block.timestamp, "Voting Time Ended");
-        require(proposal.isExecuted == false, "It is already executed");
-        isVoted[msg.sender][proposalId] = true;
+        require(whoVotedForWhichProposal[msg.sender][proposalId] == false, "You have already voted for this proposal!");
+        require(proposal.isExecuted == false, "It is already executed!");
+        whoVotedForWhichProposal[msg.sender][proposalId] = true;
         proposal.votes += numOfShares[msg.sender];
+    }
+
+    function executeProposal(uint proposalId) public onlyManager() {
+        Proposal storage proposal = proposals[proposalId];
+        require(((proposal.votes*100)/totalShares) >= quorum, "Majority does not support");
+        proposal.isExecuted = true;
+        availableFunds -= proposal.amount;
+        _transfer(proposal.amount, proposal.recipient);
+    }
+
+    function _transfer(uint amount, address payable recipient) private {
+        recipient.transfer(amount);
+    }
+
+    function ProposalList() public view returns(Proposal[] memory) {
+        Proposal[] memory arr = new Proposal[](nextProposalId - 1);
+        for(uint i = 0; i < nextProposalId; i++) {
+            arr[i] = proposals[i];
+        }
+        return arr;
     }
 }
