@@ -8,7 +8,6 @@ contract DAO {
         uint totalShares;
         uint priceOf1share;
         address payable recipient;
-        uint votes;
         bool isExecuted;
     }
 
@@ -18,7 +17,6 @@ contract DAO {
     }
 
     mapping(address => mapping(address => bool)) private isInvestorInTheProposal;
-    mapping(address => bool) public isProposer;
     mapping(address => mapping(address => uint)) private numOfSharesOfAnInvestorInAProposal;
     mapping(address => mapping(address => bool)) private whoVotedForWhichProposal;
     Proposal[] public proposals;
@@ -27,16 +25,13 @@ contract DAO {
     uint public votingStartTime;
     uint public votingDuration;
     uint public votingEndTime = votingStartTime + votingDuration;
-    uint public quorum;
     address public manager;
     address public wp;
 
-    constructor(uint _votingStartTime, uint _votingDuration, uint _quorum) {
+    constructor(uint _votingStartTime, uint _votingDuration) {
         require(_votingStartTime > block.timestamp, "Not a valid voting start time!");
-        require(_quorum > 50 && _quorum < 100, "Not a valid quorum value!");
         votingStartTime = _votingStartTime;
         votingDuration = _votingDuration;
-        quorum = _quorum;
         manager = msg.sender;
     }
 
@@ -51,6 +46,8 @@ contract DAO {
         for(uint i = 0; i < proposals.length; i++) {
             if(proposals[i].recipient == proposalId) {
         payable(msg.sender).transfer((proposals[i].priceOf1share)*numOfShares);
+        proposals[i].amount += (proposals[i].priceOf1share)*numOfShares;
+        proposals[i].totalShares += numOfShares;
             }
         }
         if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
@@ -102,8 +99,7 @@ contract DAO {
 
     function createProposal(string calldata _description, uint _amount, uint _totalShares, address payable _recipient) external onlyManager() {
         require(block.timestamp < votingStartTime, "Proposal creation time ended!");
-        proposals.push(Proposal(_description, _amount, _totalShares, _amount/_totalShares, _recipient, 0, false));
-        isProposer[_recipient] = true;
+        proposals.push(Proposal(_description, _amount, _totalShares, _amount/_totalShares, _recipient, false));
     }
 
     function voteProposal(address proposalId) external {
