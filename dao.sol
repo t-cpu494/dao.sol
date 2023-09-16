@@ -24,16 +24,18 @@ contract DAO {
 
     uint public votingStartTime;
     uint public votingDuration;
-    uint public votingEndTime = votingStartTime + votingDuration;
+    uint public votingEndTime;
     address public manager;
     address public wp;
     uint public wpIndex;
-    uint public sharePurchasingStartTime = votingEndTime + 60;
+    uint public sharePurchasingStartTime;
 
-    constructor(uint _votingStartTime, uint _votingDuration) {
+    constructor(uint _votingStartTime, uint _votingDuration, uint timeGapAfterVotingEnds) {
         require(_votingStartTime > block.timestamp, "Not a valid voting start time!");
         votingStartTime = _votingStartTime;
         votingDuration = _votingDuration;
+        votingEndTime = _votingStartTime + _votingDuration;
+        sharePurchasingStartTime = votingEndTime + timeGapAfterVotingEnds;
         manager = msg.sender;
     }
 
@@ -101,6 +103,11 @@ contract DAO {
 
     function createProposal(string calldata _description, uint _amount, uint _totalShares, address payable _recipient) external onlyManager() {
         require(block.timestamp < votingStartTime, "Proposal creation time ended!");
+        for(uint i = 0; i < proposals.length; i++) {
+            if(proposals[i].recipient == _recipient) {
+                revert("You cannot propose multiple times!");
+            }
+        }
         proposals.push(Proposal(_description, _amount, _totalShares, _amount/_totalShares, _recipient, false));
     }
 
@@ -124,7 +131,7 @@ contract DAO {
     }
 
     function winnerProposal() external onlyManager() {
-        require(block.timestamp > votingEndTime, "Voting has not ended yet!");
+        require(block.timestamp > votingEndTime, "Voting has either not started or ended yet!");
         uint majorityVotes;
         uint t;
         for(uint i = 0; i < proposals.length; i++) {
