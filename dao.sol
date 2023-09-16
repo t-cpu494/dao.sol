@@ -27,6 +27,8 @@ contract DAO {
     uint public votingEndTime = votingStartTime + votingDuration;
     address public manager;
     address public wp;
+    uint public wpIndex;
+    uint public sharePurchasingStartTime = votingEndTime + 60;
 
     constructor(uint _votingStartTime, uint _votingDuration) {
         require(_votingStartTime > block.timestamp, "Not a valid voting start time!");
@@ -52,7 +54,6 @@ contract DAO {
         }
         if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
             isInvestorInTheProposal[msg.sender][proposalId] = false;
-        }
         for(uint i = 0; i <= proposals.length; i++) {
             if(i == proposals.length) {
                 for(uint j = 0; j < investorArray.length; j++) {
@@ -65,6 +66,7 @@ contract DAO {
                 break;
             }
             }
+        }
         }
 
     function transferShare(uint numOfShares, address to, address proposalId) external {
@@ -82,7 +84,6 @@ contract DAO {
         }
         if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
             isInvestorInTheProposal[msg.sender][proposalId] = false;
-        }
         for(uint i = 0; i <= proposals.length; i++) {
             if(i == proposals.length) {
                 for(uint j = 0; j < investorArray.length; j++) {
@@ -94,7 +95,8 @@ contract DAO {
             if(isInvestorInTheProposal[msg.sender][proposals[i].recipient] == true) {
                 break;
             }
-            }        
+            }
+        }        
     }
 
     function createProposal(string calldata _description, uint _amount, uint _totalShares, address payable _recipient) external onlyManager() {
@@ -103,8 +105,8 @@ contract DAO {
     }
 
     function voteProposal(address proposalId) external {
-        require(block.timestamp > votingStartTime, "Voting not started yet!");
-        require(block.timestamp < votingEndTime, "Voting Ended!");
+        require(block.timestamp >= votingStartTime, "Voting not started yet!");
+        require(block.timestamp <= votingEndTime, "Voting Ended!");
         for(uint i = 0; i < proposals.length; i++) {
             if(proposals[i].recipient == proposalId) {
                 require(proposals[i].isExecuted == false, "It is already executed!");
@@ -116,13 +118,13 @@ contract DAO {
                 investorArray.push(isInvestor(msg.sender, false));
             }
             if(investorArray[i].investor == msg.sender) {
-                investorArray[i].isInvestorOrNot = false;
+                break;
             }
         }
     }
 
     function winnerProposal() external onlyManager() {
-        require(block.timestamp > votingStartTime, "Voting has not ended yet!");
+        require(block.timestamp > votingEndTime, "Voting has not ended yet!");
         uint majorityVotes;
         uint t;
         for(uint i = 0; i < proposals.length; i++) {
@@ -131,27 +133,23 @@ contract DAO {
                     t++;
                 }
             }
-            if(t >= majorityVotes) {
+            if(t == majorityVotes) {
+                revert("Draw!");
+            }
+            if(t > majorityVotes) {
                 majorityVotes = t;
                 wp = proposals[i].recipient;
+                wpIndex = i;
             }
         }
-        for(uint i = 0; i < proposals.length; i++) {
-            if(proposals[i].recipient == wp) {
-                proposals[i].isExecuted = true;
-            }
-        }
+        proposals[wpIndex].isExecuted = true;
     }
 
     function purchaseShares(uint numOfShares) external {
-        uint i;
-        for(uint j = 0; j < proposals.length; j++) {
-            if(proposals[j].recipient == wp) {
-                i = j;
-            }
-        }
-        require(proposals[i].totalShares >= numOfShares, "Not enough shares left now to purchase!");
-        proposals[i].totalShares -= numOfShares;
+        require(block.timestamp >= sharePurchasingStartTime , "Purchase of shares not started yet!");
+        require(whoVotedForWhichProposal[msg.sender][wp] == true, "You had not voted for this proposal");
+        require(proposals[wpIndex].totalShares >= numOfShares, "Not enough shares left now to purchase!");
+        proposals[wpIndex].totalShares -= numOfShares;
         numOfSharesOfAnInvestorInAProposal[msg.sender][wp] = numOfShares;
         isInvestorInTheProposal[msg.sender][wp] = true;
         for(uint j = 0; j < investorArray.length; j++) {
@@ -159,7 +157,7 @@ contract DAO {
                 investorArray[j].isInvestorOrNot = true;
             }
         }
-        payable(wp).transfer((proposals[i].priceOf1share)*numOfShares);
-        proposals[i].amount -= (proposals[i].priceOf1share)*numOfShares;
+        payable(wp).transfer((proposals[wpIndex].priceOf1share)*numOfShares);
+        proposals[wpIndex].amount -= (proposals[wpIndex].priceOf1share)*numOfShares;
     }
 }
