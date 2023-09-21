@@ -31,21 +31,15 @@ contract DAO {
     uint public wpIndex;
     uint public sharePurchasingStartTime;
 
-    constructor(uint _votingStartTime, uint _votingDuration, uint timeGapAfterVotingEnds) {
-        require(_votingStartTime > block.timestamp, "Not a valid voting start time!");
-        votingStartTime = _votingStartTime;
+    constructor(uint timeDurationAfterWhichVotingStarts, uint _votingDuration, uint timeGapAfterVotingEnds) {
+        votingStartTime = block.timestamp + timeDurationAfterWhichVotingStarts;
         votingDuration = _votingDuration;
-        votingEndTime = _votingStartTime + _votingDuration;
+        votingEndTime = votingStartTime + _votingDuration;
         sharePurchasingStartTime = votingEndTime + timeGapAfterVotingEnds;
         manager = msg.sender;
     }
 
-    modifier onlyManager() {
-        require(manager == msg.sender, "You are not the manager!");
-        _;
-    }
-
-    function redeemShares(uint numOfShares, address proposalId) external {
+    function redeemShares(uint numOfShares, address proposalId) external payable {
         require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal!");
         numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] -= numOfShares;
         for(uint i = 0; i < proposals.length; i++) {
@@ -73,7 +67,7 @@ contract DAO {
         }
 
     function transferShare(uint numOfShares, address to, address proposalId) external {
-        require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal");
+        require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal!");
         numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] -= numOfShares;
         numOfSharesOfAnInvestorInAProposal[to][proposalId] += numOfShares;
         isInvestorInTheProposal[to][proposalId] = true;
@@ -102,25 +96,34 @@ contract DAO {
         }        
     }
 
-    function createProposal(string calldata _description, uint _amount, uint _totalShares, address payable _recipient) external onlyManager() {
+    function createProposal(string calldata _description, uint _amount, uint _totalShares, address payable _recipient) external {
         require(block.timestamp < votingStartTime, "Proposal creation time ended!");
         for(uint i = 0; i < proposals.length; i++) {
             if(proposals[i].recipient == _recipient) {
                 revert("You cannot propose multiple times!");
             }
         }
-        proposals.push(Proposal(_description, _amount, _totalShares, _amount/_totalShares, _recipient, false));
+        proposals.push(Proposal(_description, _amount, _totalShares, _amount/_totalShares, _recipient, 0, false));
     }
 
     function voteProposal(address proposalId) external {
         require(block.timestamp >= votingStartTime, "Voting not started yet!");
         require(block.timestamp <= votingEndTime, "Voting Ended!");
-        for(uint i = 0; i < proposals.length; i++) {
+        for(uint i = 0; i <= proposals.length; i++) {
             if(proposals[i].recipient == proposalId) {
                 require(proposals[i].isExecuted == false, "It is already executed!");
+                break;
+            }
+            if(i == proposals.length) {
+                revert("There is no proposal with this ID!");
             }}
         require(whoVotedForWhichProposal[msg.sender][proposalId] == false, "You have already voted for this proposal!");
         whoVotedForWhichProposal[msg.sender][proposalId] = true;
+        for(uint i = 0; i < proposals.length; i++) {
+            if(proposals[i].recipient == proposalId) {
+                proposals[i].votes++;
+            }
+        }
         for(uint i = 0; i <= investorArray.length; i++) {
             if(i == investorArray.length) {
                 investorArray.push(isInvestor(msg.sender, false));
@@ -131,29 +134,29 @@ contract DAO {
         }
     }
 
-    function winnerProposal() external onlyManager() {
+    function winnerProposal() external {
+        require(msg.sender == manager, "You are not the manager!");
         require(block.timestamp > votingEndTime, "Voting has either not started or ended yet!");
         uint majorityVotes;
         uint t;
 
         for(uint i = 0; i < proposals.length; i++) {
-            t = 0;
-            for(uint j = 0; j < investorArray.length; j++) {
-                if(whoVotedForWhichProposal[investorArray[j].investor][proposals[i].recipient] == true ) {
-                    t++;
-                }
-            }
+            t = proposals[i].votes;
             if(t > majorityVotes) {
                 majorityVotes = t;
                 wp = proposals[i].recipient;
                 wpIndex = i;
             }
+    }
+    for(uint i = 0; i < proposals.length; i++) {
+        if(proposals[i].votes == majorityVotes && wp != proposals[i].recipient) {
+            revert("Draw!");
         }
-        require(majorityVotes != 0, "No one voted!");
-        proposals[wpIndex].isExecuted = true;
+    }
+    proposals[wpIndex].isExecuted = true;
     }
 
-    function purchaseShares(uint numOfShares) external {
+    function purchaseShares(uint numOfShares) external payable {
         require(block.timestamp >= sharePurchasingStartTime , "Purchase of shares not started yet!");
         require(whoVotedForWhichProposal[msg.sender][wp] == true, "You had not voted for this proposal");
         require(proposals[wpIndex].totalShares >= numOfShares, "Not enough shares left now to purchase!");
