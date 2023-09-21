@@ -8,6 +8,7 @@ contract DAO {
         uint totalShares;
         uint priceOf1share;
         address payable recipient;
+        uint votes;
         bool isExecuted;
     }
 
@@ -134,14 +135,13 @@ contract DAO {
         require(block.timestamp > votingEndTime, "Voting has either not started or ended yet!");
         uint majorityVotes;
         uint t;
+
         for(uint i = 0; i < proposals.length; i++) {
+            t = 0;
             for(uint j = 0; j < investorArray.length; j++) {
                 if(whoVotedForWhichProposal[investorArray[j].investor][proposals[i].recipient] == true ) {
                     t++;
                 }
-            }
-            if(t == majorityVotes) {
-                revert("Draw!");
             }
             if(t > majorityVotes) {
                 majorityVotes = t;
@@ -149,6 +149,7 @@ contract DAO {
                 wpIndex = i;
             }
         }
+        require(majorityVotes != 0, "No one voted!");
         proposals[wpIndex].isExecuted = true;
     }
 
