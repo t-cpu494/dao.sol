@@ -160,6 +160,11 @@ contract DAO {
         require(block.timestamp >= sharePurchasingStartTime , "Purchase of shares not started yet!");
         require(whoVotedForWhichProposal[msg.sender][wp] == true, "You had not voted for this proposal");
         require(proposals[wpIndex].totalShares >= numOfShares, "Not enough shares left now to purchase!");
+        if(msg.value == proposals[wpIndex].priceOf1share * numOfShares) {
+        payable(wp).transfer(msg.value);
+        } else {
+            revert("Enter purchased shares' amount");
+        }
         proposals[wpIndex].totalShares -= numOfShares;
         numOfSharesOfAnInvestorInAProposal[msg.sender][wp] = numOfShares;
         isInvestorInTheProposal[msg.sender][wp] = true;
@@ -168,7 +173,6 @@ contract DAO {
                 investorArray[j].isInvestorOrNot = true;
             }
         }
-        payable(wp).transfer((proposals[wpIndex].priceOf1share)*numOfShares);
         proposals[wpIndex].amount -= (proposals[wpIndex].priceOf1share)*numOfShares;
     }
 }
