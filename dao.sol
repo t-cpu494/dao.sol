@@ -39,27 +39,36 @@ contract DAO {
         manager = msg.sender;
     }
 
-    function redeemShares(uint numOfShares, address proposalId) external payable {
-        require(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] >= numOfShares, "You don't have enough shares invested in this proposal!");
-        numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] -= numOfShares;
-        for(uint i = 0; i < proposals.length; i++) {
+    function redeemShares(address payable  applicant, uint numOfShares, address proposalId) external payable {
+        require(msg.sender == proposalId, "You are not the proposer of this proposal ID!");
+        require(numOfSharesOfAnInvestorInAProposal[applicant][proposalId] >= numOfShares, "Applicant doesn't have enough shares invested in this proposal!");
+        numOfSharesOfAnInvestorInAProposal[applicant][proposalId] -= numOfShares;
+        for(uint i = 0; i <= proposals.length; i++) {
+            if(i == proposals.length) {
+                revert("There is no proposal with this proposalId!");
+                }
             if(proposals[i].recipient == proposalId) {
-        payable(msg.sender).transfer((proposals[i].priceOf1share)*numOfShares);
+                if(msg.value == (proposals[i].priceOf1share)*numOfShares) {
+        payable(applicant).transfer(msg.value);
+                } else {
+                    revert("Enter amount worth the redeeming shares!");
+                }
         proposals[i].amount += (proposals[i].priceOf1share)*numOfShares;
         proposals[i].totalShares += numOfShares;
+        break;
             }
         }
-        if(numOfSharesOfAnInvestorInAProposal[msg.sender][proposalId] == 0) {
-            isInvestorInTheProposal[msg.sender][proposalId] = false;
+        if(numOfSharesOfAnInvestorInAProposal[applicant][proposalId] == 0) {
+            isInvestorInTheProposal[applicant][proposalId] = false;
         for(uint i = 0; i <= proposals.length; i++) {
             if(i == proposals.length) {
                 for(uint j = 0; j < investorArray.length; j++) {
-                    if(investorArray[j].investor == msg.sender) {
+                    if(investorArray[j].investor == applicant) {
                         investorArray[j].isInvestorOrNot = false;
                     }
                 }
             }
-            if(isInvestorInTheProposal[msg.sender][proposals[i].recipient] == true) {
+            if(isInvestorInTheProposal[applicant][proposals[i].recipient] == true) {
                 break;
             }
             }
@@ -166,7 +175,7 @@ contract DAO {
             revert("Enter purchased shares' amount");
         }
         proposals[wpIndex].totalShares -= numOfShares;
-        numOfSharesOfAnInvestorInAProposal[msg.sender][wp] = numOfShares;
+        numOfSharesOfAnInvestorInAProposal[msg.sender][wp] += numOfShares;
         isInvestorInTheProposal[msg.sender][wp] = true;
         for(uint j = 0; j < investorArray.length; j++) {
             if(investorArray[j].investor == msg.sender) {
